@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
@@ -50,29 +51,31 @@ public class HiveKeyIgnoringBAMOutputFormat
       // differently, otherwise their common sort order.
       SAMFileHeader.SortOrder sortOrder = null;
 
-      // XXX             XXX
-      //     XXX     XXX
-      //         XXX
-      //     XXX     XXX
-      // XXX             XXX
-      //
-      // I'm not sure if FileInputFormat.getInputPaths(job) will be
-      // accurate given Hive's internally used custom input formats.
-      for (final Path p : FileInputFormat.getInputPaths(job)) {
-         final SAMFileReader r =
-            new SAMFileReader(p.getFileSystem(job).open(p));
-         final SAMFileHeader h = r.getFileHeader();
-         r.close();
-         headers.add(h);
+      // XXX: it seems that FileInputFormat.getInputPaths(job) will point to
+      // the directories of the input tables in the query. I'm not sure if this
+      // is always the case.
+      for (final Path table : FileInputFormat.getInputPaths(job)) {
+         final FileSystem fs = table.getFileSystem(job);
+         for (final FileStatus stat : fs.listStatus(table)) {
+            if (!stat.isFile())
+               throw new IOException(
+                  "Unexpected directory '" + stat.getPath() +
+                  "', expected only files");
 
-         if (sortOrder == null) {
-            sortOrder = h.getSortOrder();
-            continue;
+            final SAMFileReader r = new SAMFileReader(fs.open(stat.getPath()));
+            final SAMFileHeader h = r.getFileHeader();
+            r.close();
+            headers.add(h);
+
+            if (sortOrder == null) {
+               sortOrder = h.getSortOrder();
+               continue;
+            }
+            if (sortOrder == SAMFileHeader.SortOrder.unsorted)
+               continue;
+            if (sortOrder != h.getSortOrder())
+               sortOrder = SAMFileHeader.SortOrder.unsorted;
          }
-         if (sortOrder == SAMFileHeader.SortOrder.unsorted)
-            continue;
-         if (sortOrder != h.getSortOrder())
-            sortOrder = SAMFileHeader.SortOrder.unsorted;
       }
 
       wrappedOutputFormat.setSAMHeader(
