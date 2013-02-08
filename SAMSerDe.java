@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 
 import org.apache.hadoop.hive.serde2.SerDe;
@@ -16,9 +15,7 @@ import org.apache.hadoop.hive.serde2.SerDeStats;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.AbstractPrimitiveJavaObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 
 import net.sf.samtools.SAMRecord;
 
@@ -74,9 +71,19 @@ class SAMRecordInspector extends StructObjectInspector {
    private static Map<String, StructField> fieldMap;
    static {
       fields = new ArrayList<StructField>();
-      fields.add(new QNameField());
+      fields.add(new SAMRecordField(SAMRecordField.Type.QNAME));
+      fields.add(new SAMRecordField(SAMRecordField.Type.FLAG));
+      fields.add(new SAMRecordField(SAMRecordField.Type.RNAME));
+      fields.add(new SAMRecordField(SAMRecordField.Type.POS));
+      fields.add(new SAMRecordField(SAMRecordField.Type.MAPQ));
+      fields.add(new SAMRecordField(SAMRecordField.Type.CIGAR));
+      fields.add(new SAMRecordField(SAMRecordField.Type.RNEXT));
+      fields.add(new SAMRecordField(SAMRecordField.Type.PNEXT));
+      fields.add(new SAMRecordField(SAMRecordField.Type.TLEN));
+      fields.add(new SAMRecordField(SAMRecordField.Type.SEQ));
+      fields.add(new SAMRecordField(SAMRecordField.Type.QUAL));
 
-      // TODO: remaining fields
+      // XXX: no attributes at least yet because Impala doesn't support maps.
 
       fieldMap = new HashMap<String, StructField>(fields.size(), 1);
       for (StructField f : fields)
@@ -96,11 +103,20 @@ class SAMRecordInspector extends StructObjectInspector {
          return null;
       final SAMRecord rec = (SAMRecord)data;
 
-      if (field instanceof QNameField) {
-         return rec.getReadName();
+      switch (((SAMRecordField)field).getType()) {
+      case QNAME: return rec.getReadName();
+      case FLAG:  return Short.valueOf((short)rec.getFlags());
+      case RNAME: return rec.getReferenceName();
+      case POS:   return rec.getAlignmentStart();
+      case MAPQ:  return Byte.valueOf((byte)rec.getMappingQuality());
+      case CIGAR: return rec.getCigarString();
+      case RNEXT: return rec.getMateReferenceName();
+      case PNEXT: return rec.getMateAlignmentStart();
+      case TLEN:  return rec.getInferredInsertSize();
+      case SEQ:   return rec.getReadString();
+      case QUAL:  return rec.getBaseQualityString();
       }
-
-      throw new RuntimeException("other fields not implemented");
+      throw new RuntimeException("Unknown field " +field);
    }
 
    @Override public List<Object> getStructFieldsDataAsList(Object data) {
@@ -110,6 +126,16 @@ class SAMRecordInspector extends StructObjectInspector {
 
       final List<Object> list = new ArrayList<Object>(fields.size());
       list.add(rec.getReadName());
+      list.add(Short.valueOf((short)rec.getFlags()));
+      list.add(rec.getReferenceName());
+      list.add(rec.getAlignmentStart());
+      list.add(Byte.valueOf((byte)rec.getMappingQuality()));
+      list.add(rec.getCigarString());
+      list.add(rec.getMateReferenceName());
+      list.add(rec.getMateAlignmentStart());
+      list.add(rec.getInferredInsertSize());
+      list.add(rec.getReadString());
+      list.add(rec.getBaseQualityString());
       return list;
    }
 
@@ -117,25 +143,52 @@ class SAMRecordInspector extends StructObjectInspector {
    @Override public Category getCategory() { return Category.STRUCT; }
 }
 
-class QNameField implements StructField {
-   static class Inspector
-         extends AbstractPrimitiveJavaObjectInspector
-         implements StringObjectInspector
-   {
-      public Inspector() {
-         super(PrimitiveObjectInspectorUtils.stringTypeEntry);
-      }
-
-      @Override public Text getPrimitiveWritableObject(Object o) {
-         return new Text((String)o);
-      }
-      @Override public String getPrimitiveJavaObject(Object o) {
-         return (String)o;
+class SAMRecordField implements StructField {
+   public static enum Type {
+      QNAME, FLAG, RNAME, POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL;
+      public String getName() {
+         switch (this) {
+         case QNAME: return "qname";
+         case FLAG:  return "flag";
+         case RNAME: return "rname";
+         case POS:   return "pos";
+         case MAPQ:  return "mapq";
+         case CIGAR: return "cigar";
+         case RNEXT: return "rnext";
+         case PNEXT: return "pnext";
+         case TLEN:  return "tlen";
+         case SEQ:   return "seq";
+         case QUAL:  return "qual";
+         }
+         assert (false);
+         throw new RuntimeException("Internal error");
       }
    }
-   private static ObjectInspector insp = new Inspector();
 
-   @Override public String          getFieldName()            {return "qname";}
-   @Override public ObjectInspector getFieldObjectInspector() {return insp;}
-   @Override public String          getFieldComment()         {return null;}
+   private final SAMRecordField.Type type;
+
+   public SAMRecordField(SAMRecordField.Type t) { type = t; }
+
+   public Type getType() { return type; }
+
+   @Override public String getFieldName()    { return type.getName(); }
+   @Override public String getFieldComment() { return null; }
+
+   @Override public ObjectInspector getFieldObjectInspector() {
+      switch (type) {
+         case QNAME: case RNAME: case CIGAR: case RNEXT: case SEQ: case QUAL:
+            return PrimitiveObjectInspectorFactory.javaStringObjectInspector;
+
+         case FLAG:
+            return PrimitiveObjectInspectorFactory.javaShortObjectInspector;
+
+         case POS: case PNEXT: case TLEN:
+            return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
+
+         case MAPQ:
+            return PrimitiveObjectInspectorFactory.javaByteObjectInspector;
+      }
+      assert (false);
+      throw new RuntimeException("Internal error");
+   }
 }
