@@ -33,12 +33,14 @@ import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeStats;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 
 import net.sf.samtools.CigarOperator;
 import net.sf.samtools.SAMRecord;
+import net.sf.samtools.SAMTagUtil;
 
 import fi.tkk.ics.hadoop.bam.SAMRecordWritable;
 
@@ -101,6 +103,15 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.SEQ));
       fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.QUAL));
 
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_CHAR));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_INT));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_FLOAT));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_STRING));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_ARR_INT8));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_ARR_INT16));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_ARR_INT32));
+      fields.add(new SAMBaseRecordField(SAMBaseRecordField.Type.OPTS_ARR_FLOAT));
+
       fieldMap = new HashMap<String, StructField>(fields.size(), 1);
       for (StructField f : fields)
          fieldMap.put(f.getFieldName(), f);
@@ -120,7 +131,9 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       final SAMBaseRecord rec = (SAMBaseRecord)data;
       final SAMRecord     par = rec.getParent().get();
 
-      switch (((SAMBaseRecordField)field).getType()) {
+      final SAMBaseRecordField.Type ty = ((SAMBaseRecordField)field).getType();
+
+      switch (ty) {
       case QNAME: return par.getReadName();
       case FLAG:  return (short)par.getFlags();
       case RNAME: return par.getReferenceName();
@@ -133,7 +146,30 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       case SEQ:   return rec.getBase();
       case QUAL:  return rec.getQuality();
       }
-      throw new RuntimeException("Unknown field " +field);
+
+      final Map<Short,Object> optsMap = new HashMap<Short,Object>();
+
+      final Class<?> givenClass, storedClass;
+      switch (ty) {
+      case OPTS_CHAR: givenClass = char.class; storedClass = byte.class; break;
+
+      case OPTS_INT:    givenClass = storedClass = int.class; break;
+      case OPTS_FLOAT:  givenClass = storedClass = float.class; break;
+      case OPTS_STRING: givenClass = storedClass = String.class; break;
+
+      case OPTS_ARR_INT8:  givenClass = storedClass = byte [].class; break;
+      case OPTS_ARR_INT16: givenClass = storedClass = short[].class; break;
+      case OPTS_ARR_INT32: givenClass = storedClass = int  [].class; break;
+      case OPTS_ARR_FLOAT: givenClass = storedClass = float[].class; break;
+
+      default: throw new RuntimeException("Unknown field " +field);
+      }
+
+      final SAMTagUtil u = SAMTagUtil.getSingleton();
+      for (final SAMRecord.SAMTagAndValue tav : par.getAttributes())
+         if (tav.value.getClass() == givenClass)
+            optsMap.put(u.makeBinaryTag(tav.tag), storedClass.cast(tav.value));
+      return optsMap;
    }
 
    @Override public List<Object> getStructFieldsDataAsList(Object data) {
@@ -154,6 +190,49 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       list.add(par.getInferredInsertSize());
       list.add(rec.getBase());
       list.add(rec.getQuality());
+
+      final Map<Short,Byte>    optsChar   = new HashMap<Short,Byte>();
+      final Map<Short,Integer> optsInt    = new HashMap<Short,Integer>();
+      final Map<Short,Float>   optsFloat  = new HashMap<Short,Float>();
+      final Map<Short,String>  optsString = new HashMap<Short,String>();
+      final Map<Short,byte[]>  optsAInt8  = new HashMap<Short,byte[]>();
+      final Map<Short,short[]> optsAInt16 = new HashMap<Short,short[]>();
+      final Map<Short,int[]>   optsAInt32 = new HashMap<Short,int[]>();
+      final Map<Short,float[]> optsAFloat = new HashMap<Short,float[]>();
+
+      list.add(optsChar);
+      list.add(optsInt);
+      list.add(optsFloat);
+      list.add(optsString);
+      list.add(optsAInt8);
+      list.add(optsAInt16);
+      list.add(optsAInt32);
+      list.add(optsAFloat);
+
+      final SAMTagUtil u = SAMTagUtil.getSingleton();
+      for (final SAMRecord.SAMTagAndValue tav : par.getAttributes()) {
+         final short key = u.makeBinaryTag(tav.tag);
+         final Class<?> c = tav.value.getClass();
+
+         if (c == char.class)
+            optsChar.put(key, (Byte)tav.value);
+         else if (c == int.class)
+            optsInt.put(key, (Integer)tav.value);
+         else if (c == float.class)
+            optsFloat.put(key, (Float)tav.value);
+         else if (c == String.class)
+            optsString.put(key, (String)tav.value);
+         else if (c == byte[].class)
+            optsAInt8.put(key, (byte[])tav.value);
+         else if (c == short[].class)
+            optsAInt16.put(key, (short[])tav.value);
+         else if (c == int[].class)
+            optsAInt32.put(key, (int[])tav.value);
+         else if (c == float[].class)
+            optsAFloat.put(key, (float[])tav.value);
+         else
+            throw new RuntimeException("Unknown value type for tag: "+c);
+      }
       return list;
    }
 
@@ -163,7 +242,9 @@ class SAMBaseRecordInspector extends StructObjectInspector {
 
 class SAMBaseRecordField implements StructField {
    public static enum Type {
-      QNAME, FLAG, RNAME, POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL;
+      QNAME, FLAG, RNAME, POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL,
+      OPTS_CHAR, OPTS_INT, OPTS_FLOAT, OPTS_STRING,
+      OPTS_ARR_INT8, OPTS_ARR_INT16, OPTS_ARR_INT32, OPTS_ARR_FLOAT;
       public String getName() {
          switch (this) {
          case QNAME: return "qname";
@@ -177,6 +258,15 @@ class SAMBaseRecordField implements StructField {
          case TLEN:  return "tlen";
          case SEQ:   return "seq";
          case QUAL:  return "qual";
+
+         case OPTS_CHAR:      return "opts_char";
+         case OPTS_INT:       return "opts_int";
+         case OPTS_FLOAT:     return "opts_float";
+         case OPTS_STRING:    return "opts_string";
+         case OPTS_ARR_INT8:  return "opts_arr_int8";
+         case OPTS_ARR_INT16: return "opts_arr_int16";
+         case OPTS_ARR_INT32: return "opts_arr_int32";
+         case OPTS_ARR_FLOAT: return "opts_arr_float";
          }
          assert (false);
          throw new RuntimeException("Internal error");
@@ -205,6 +295,43 @@ class SAMBaseRecordField implements StructField {
 
          case MAPQ: case CIGAR: case SEQ: case QUAL:
             return PrimitiveObjectInspectorFactory.javaByteObjectInspector;
+
+         case OPTS_CHAR:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               PrimitiveObjectInspectorFactory.javaByteObjectInspector);
+         case OPTS_INT:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               PrimitiveObjectInspectorFactory.javaIntObjectInspector);
+         case OPTS_FLOAT:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               PrimitiveObjectInspectorFactory.javaFloatObjectInspector);
+         case OPTS_STRING:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               PrimitiveObjectInspectorFactory.javaStringObjectInspector);
+         case OPTS_ARR_INT8:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               ObjectInspectorFactory.getStandardListObjectInspector(
+                  PrimitiveObjectInspectorFactory.javaByteObjectInspector));
+         case OPTS_ARR_INT16:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               ObjectInspectorFactory.getStandardListObjectInspector(
+                  PrimitiveObjectInspectorFactory.javaShortObjectInspector));
+         case OPTS_ARR_INT32:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               ObjectInspectorFactory.getStandardListObjectInspector(
+                  PrimitiveObjectInspectorFactory.javaIntObjectInspector));
+         case OPTS_ARR_FLOAT:
+            return ObjectInspectorFactory.getStandardMapObjectInspector(
+               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
+               ObjectInspectorFactory.getStandardListObjectInspector(
+                  PrimitiveObjectInspectorFactory.javaFloatObjectInspector));
       }
       assert (false);
       throw new RuntimeException("Internal error");
