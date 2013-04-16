@@ -66,21 +66,22 @@ public class DeprecatedBAMRecordReader
 
          final FileSplit fspl = (FileSplit)split;
          final Path path = fspl.getPath();
+
+         final long beg =       fspl.getStart();
+         final long end = beg + fspl.getLength();
+
          final SeekableStream sin =
             WrapSeekable.openPath(path.getFileSystem(job), path);
          final BAMSplitGuesser guesser = new BAMSplitGuesser(sin);
 
-         long beg =       fspl.getStart();
-         long end = beg + fspl.getLength();
-
-         long alignedBeg = guesser.guessNextBAMRecordStart(beg, end);
-         long alignedEnd = end << 16 | 0xffff;
+         final long alignedBeg = guesser.guessNextBAMRecordStart(beg, end);
+         sin.close();
 
          if (alignedBeg == end)
-            alignedEnd = alignedBeg;
-         splitLength = alignedEnd - alignedBeg;
+            throw new IOException("Guesser found nothing after pos " +beg);
 
-         sin.close();
+         final long alignedEnd = end << 16 | 0xffff;
+         splitLength = (alignedEnd - alignedBeg) >> 16;
 
          rr.initialize(
             new FileVirtualSplit(
