@@ -5,6 +5,7 @@ import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.RawComparator;
+import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.JobID;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -76,4 +77,6 @@ public class FakeTaskAttemptContext implements TaskAttemptContext {
    @Override public JobID getJobID() { return null; }
    @Override public Credentials getCredentials() { return null; }
    @Override public void progress() {}
+   @Override public Counter getCounter(String a, String b) { return null; }
+   @Override public Counter getCounter(Enum<?> a) { return null; }
 }
