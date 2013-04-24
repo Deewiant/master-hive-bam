@@ -21,6 +21,7 @@
 // File created: 2013-02-05 13:37:56
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,29 +149,56 @@ class SAMRecordInspector extends StructObjectInspector {
       case QUAL:  return rec.getBaseQualityString();
       }
 
-      final Map<Short,Object> optsMap = new HashMap<Short,Object>();
+      final StringBuilder opts = new StringBuilder();
 
-      final Class<?> givenClass, storedClass;
+      final Class<?> givenClass;
       switch (ty) {
-      case OPTS_CHAR: givenClass = char.class; storedClass = byte.class; break;
+      case OPTS_CHAR: givenClass = char.class; break;
 
-      case OPTS_INT:    givenClass = storedClass = int.class; break;
-      case OPTS_FLOAT:  givenClass = storedClass = float.class; break;
-      case OPTS_STRING: givenClass = storedClass = String.class; break;
+      case OPTS_INT:    givenClass = int.class; break;
+      case OPTS_FLOAT:  givenClass = float.class; break;
+      case OPTS_STRING: givenClass = String.class; break;
 
-      case OPTS_ARR_INT8:  givenClass = storedClass = byte [].class; break;
-      case OPTS_ARR_INT16: givenClass = storedClass = short[].class; break;
-      case OPTS_ARR_INT32: givenClass = storedClass = int  [].class; break;
-      case OPTS_ARR_FLOAT: givenClass = storedClass = float[].class; break;
+      case OPTS_ARR_INT8:  givenClass = byte [].class; break;
+      case OPTS_ARR_INT16: givenClass = short[].class; break;
+      case OPTS_ARR_INT32: givenClass = int  [].class; break;
+      case OPTS_ARR_FLOAT: givenClass = float[].class; break;
 
       default: throw new RuntimeException("Unknown field " +field);
       }
 
-      final SAMTagUtil u = SAMTagUtil.getSingleton();
-      for (final SAMRecord.SAMTagAndValue tav : rec.getAttributes())
-         if (tav.value.getClass() == givenClass)
-            optsMap.put(u.makeBinaryTag(tav.tag), storedClass.cast(tav.value));
-      return optsMap;
+      for (final SAMRecord.SAMTagAndValue tav : rec.getAttributes()) {
+         if (tav.value.getClass() != givenClass)
+            continue;
+
+         if (opts.length() > 0)
+            opts.append("`\000\000`");
+
+         opts.append(tav.tag);
+         opts.append('=');
+
+         final Object val;
+
+         switch (ty) {
+         case OPTS_ARR_INT8:
+            val = Arrays.toString((byte[])tav.value);
+            break;
+         case OPTS_ARR_INT16:
+            val = Arrays.toString((short[])tav.value);
+            break;
+         case OPTS_ARR_INT32:
+            val = Arrays.toString((int[])tav.value);
+            break;
+         case OPTS_ARR_FLOAT:
+            val = Arrays.toString((float[])tav.value);
+            break;
+         default:
+            val = tav.value;
+            break;
+         }
+         opts.append(val);
+      }
+      return opts.toString();
    }
 
    @Override public List<Object> getStructFieldsDataAsList(Object data) {
@@ -191,48 +219,60 @@ class SAMRecordInspector extends StructObjectInspector {
       list.add(rec.getReadString());
       list.add(rec.getBaseQualityString());
 
-      final Map<Short,Byte>    optsChar   = new HashMap<Short,Byte>();
-      final Map<Short,Integer> optsInt    = new HashMap<Short,Integer>();
-      final Map<Short,Float>   optsFloat  = new HashMap<Short,Float>();
-      final Map<Short,String>  optsString = new HashMap<Short,String>();
-      final Map<Short,byte[]>  optsAInt8  = new HashMap<Short,byte[]>();
-      final Map<Short,short[]> optsAInt16 = new HashMap<Short,short[]>();
-      final Map<Short,int[]>   optsAInt32 = new HashMap<Short,int[]>();
-      final Map<Short,float[]> optsAFloat = new HashMap<Short,float[]>();
+      final StringBuilder optsChar   = new StringBuilder();
+      final StringBuilder optsInt    = new StringBuilder();
+      final StringBuilder optsFloat  = new StringBuilder();
+      final StringBuilder optsString = new StringBuilder();
+      final StringBuilder optsAInt8  = new StringBuilder();
+      final StringBuilder optsAInt16 = new StringBuilder();
+      final StringBuilder optsAInt32 = new StringBuilder();
+      final StringBuilder optsAFloat = new StringBuilder();
 
-      list.add(optsChar);
-      list.add(optsInt);
-      list.add(optsFloat);
-      list.add(optsString);
-      list.add(optsAInt8);
-      list.add(optsAInt16);
-      list.add(optsAInt32);
-      list.add(optsAFloat);
-
-      final SAMTagUtil u = SAMTagUtil.getSingleton();
       for (final SAMRecord.SAMTagAndValue tav : rec.getAttributes()) {
-         final short key = u.makeBinaryTag(tav.tag);
          final Class<?> c = tav.value.getClass();
 
+         final StringBuilder sb;
+         Object val = tav.value;
+
          if (c == char.class)
-            optsChar.put(key, (Byte)tav.value);
+            sb = optsChar;
          else if (c == int.class)
-            optsInt.put(key, (Integer)tav.value);
+            sb = optsInt;
          else if (c == float.class)
-            optsFloat.put(key, (Float)tav.value);
+            sb = optsFloat;
          else if (c == String.class)
-            optsString.put(key, (String)tav.value);
-         else if (c == byte[].class)
-            optsAInt8.put(key, (byte[])tav.value);
-         else if (c == short[].class)
-            optsAInt16.put(key, (short[])tav.value);
-         else if (c == int[].class)
-            optsAInt32.put(key, (int[])tav.value);
-         else if (c == float[].class)
-            optsAFloat.put(key, (float[])tav.value);
-         else
+            sb = optsString;
+         else if (c == byte[].class) {
+            sb = optsAInt8;
+            val = Arrays.toString((byte[])tav.value);
+         } else if (c == short[].class) {
+            sb = optsAInt16;
+            val = Arrays.toString((short[])tav.value);
+         } else if (c == int[].class) {
+            sb = optsAInt32;
+            val = Arrays.toString((int[])tav.value);
+         } else if (c == float[].class) {
+            sb = optsAFloat;
+            val = Arrays.toString((float[])tav.value);
+         } else
             throw new RuntimeException("Unknown value type for tag: "+c);
+
+         if (sb.length() > 0)
+            sb.append("`\000\000`");
+         sb.append(tav.tag);
+         sb.append('=');
+         sb.append(val);
       }
+
+      list.add(optsChar.toString());
+      list.add(optsInt.toString());
+      list.add(optsFloat.toString());
+      list.add(optsString.toString());
+      list.add(optsAInt8.toString());
+      list.add(optsAInt16.toString());
+      list.add(optsAInt32.toString());
+      list.add(optsAFloat.toString());
+
       return list;
    }
 
@@ -288,6 +328,9 @@ class SAMRecordField implements StructField {
    @Override public ObjectInspector getFieldObjectInspector() {
       switch (type) {
          case QNAME: case RNAME: case CIGAR: case RNEXT: case SEQ: case QUAL:
+         case OPTS_CHAR: case OPTS_INT: case OPTS_FLOAT: case OPTS_STRING:
+         case OPTS_ARR_INT8: case OPTS_ARR_INT16: case OPTS_ARR_INT32:
+         case OPTS_ARR_FLOAT:
             return PrimitiveObjectInspectorFactory.javaStringObjectInspector;
 
          case FLAG:
@@ -298,43 +341,6 @@ class SAMRecordField implements StructField {
 
          case POS: case PNEXT: case TLEN:
             return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
-
-         case OPTS_CHAR:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               PrimitiveObjectInspectorFactory.javaByteObjectInspector);
-         case OPTS_INT:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               PrimitiveObjectInspectorFactory.javaIntObjectInspector);
-         case OPTS_FLOAT:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               PrimitiveObjectInspectorFactory.javaFloatObjectInspector);
-         case OPTS_STRING:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               PrimitiveObjectInspectorFactory.javaStringObjectInspector);
-         case OPTS_ARR_INT8:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               ObjectInspectorFactory.getStandardListObjectInspector(
-                  PrimitiveObjectInspectorFactory.javaByteObjectInspector));
-         case OPTS_ARR_INT16:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               ObjectInspectorFactory.getStandardListObjectInspector(
-                  PrimitiveObjectInspectorFactory.javaShortObjectInspector));
-         case OPTS_ARR_INT32:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               ObjectInspectorFactory.getStandardListObjectInspector(
-                  PrimitiveObjectInspectorFactory.javaIntObjectInspector));
-         case OPTS_ARR_FLOAT:
-            return ObjectInspectorFactory.getStandardMapObjectInspector(
-               PrimitiveObjectInspectorFactory.javaShortObjectInspector,
-               ObjectInspectorFactory.getStandardListObjectInspector(
-                  PrimitiveObjectInspectorFactory.javaFloatObjectInspector));
       }
       assert (false);
       throw new RuntimeException("Internal error");
