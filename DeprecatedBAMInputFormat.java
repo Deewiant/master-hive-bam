@@ -50,39 +50,7 @@ public class DeprecatedBAMInputFormat
       return new DeprecatedBAMRecordReader(split, job, reporter);
    }
 
-   @Override public InputSplit[] getSplits(JobConf job, int numSplits)
-      throws IOException
-   {
-      return deprecateSplits(new BAMInputFormat().getSplits(
-         undeprecateSplits(super.getSplits(job, numSplits)), job));
-   }
-
-   public static DeprecatedFileVirtualSplit[] deprecateSplits(
-      List<org.apache.hadoop.mapreduce.InputSplit> splits)
-   {
-      final DeprecatedFileVirtualSplit[] deprecated =
-         new DeprecatedFileVirtualSplit[splits.size()];
-      for (int i = 0; i < splits.size(); ++i)
-         deprecated[i] =
-            new DeprecatedFileVirtualSplit((FileVirtualSplit)splits.get(i));
-      return deprecated;
-   }
-   public static List<org.apache.hadoop.mapreduce.InputSplit>
-         undeprecateSplits(InputSplit[] splits)
-      throws IOException
-   {
-      final List<org.apache.hadoop.mapreduce.InputSplit> undeprecated =
-         new ArrayList<org.apache.hadoop.mapreduce.InputSplit>(splits.length);
-      for (final InputSplit s : splits) {
-         final FileSplit f = (FileSplit)s;
-         undeprecated.add(
-            new org.apache.hadoop.mapreduce.lib.input.FileSplit(
-               f.getPath(), f.getStart(), f.getLength(), f.getLocations()));
-      }
-      return undeprecated;
-   }
-
-   @Override public boolean isSplitable(FileSystem fs, Path path) {
-      return true;
-   }
+   // We do not override getSplits() because Shark chokes with
+   // IllegalStateException inside java.io.ObjectInputStream when trying to
+   // deserialize our splits.
 }
