@@ -14,7 +14,7 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
 
-import net.sf.samtools.util.SeekableStream;
+import net.sf.samtools.seekablestream.SeekableStream;
 
 import fi.tkk.ics.hadoop.bam.BAMRecordReader;
 import fi.tkk.ics.hadoop.bam.BAMSplitGuesser;
