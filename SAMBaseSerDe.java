@@ -105,7 +105,7 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       case FLAG:  return (short)par.getFlags();
       case RNAME: return par.getReferenceName();
       case POS:   return rec.getPos();
-      case MAPQ:  return (short)par.getMappingQuality();
+      case MAPQ:  return (byte)par.getMappingQuality();
       case CIGAR: return rec.getCigarChar();
       case RNEXT: return par.getMateReferenceName();
       case PNEXT: return par.getMateAlignmentStart();
@@ -127,7 +127,7 @@ class SAMBaseRecordInspector extends StructObjectInspector {
       list.add((short)par.getFlags());
       list.add(par.getReferenceName());
       list.add(rec.getPos());
-      list.add((short)par.getMappingQuality());
+      list.add((byte)par.getMappingQuality());
       list.add(rec.getCigarChar());
       list.add(par.getMateReferenceName());
       list.add(par.getMateAlignmentStart());
@@ -177,13 +177,13 @@ class SAMBaseRecordField implements StructField {
          case QNAME: case RNAME: case RNEXT:
             return PrimitiveObjectInspectorFactory.javaStringObjectInspector;
 
-         case FLAG: case MAPQ:
+         case FLAG:
             return PrimitiveObjectInspectorFactory.javaShortObjectInspector;
 
          case POS: case PNEXT: case TLEN:
             return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
 
-         case CIGAR: case SEQ: case QUAL:
+         case MAPQ: case CIGAR: case SEQ: case QUAL:
             return PrimitiveObjectInspectorFactory.javaByteObjectInspector;
       }
       assert (false);
