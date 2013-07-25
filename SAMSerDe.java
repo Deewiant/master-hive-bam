@@ -105,10 +105,10 @@ class SAMRecordInspector extends StructObjectInspector {
 
       switch (((SAMRecordField)field).getType()) {
       case QNAME: return rec.getReadName();
-      case FLAG:  return Short.valueOf((short)rec.getFlags());
+      case FLAG:  return (short)rec.getFlags();
       case RNAME: return rec.getReferenceName();
       case POS:   return rec.getAlignmentStart();
-      case MAPQ:  return Byte.valueOf((byte)rec.getMappingQuality());
+      case MAPQ:  return (byte)rec.getMappingQuality();
       case CIGAR: return rec.getCigarString();
       case RNEXT: return rec.getMateReferenceName();
       case PNEXT: return rec.getMateAlignmentStart();
@@ -126,10 +126,10 @@ class SAMRecordInspector extends StructObjectInspector {
 
       final List<Object> list = new ArrayList<Object>(fields.size());
       list.add(rec.getReadName());
-      list.add(Short.valueOf((short)rec.getFlags()));
+      list.add((short)rec.getFlags());
       list.add(rec.getReferenceName());
       list.add(rec.getAlignmentStart());
-      list.add(Byte.valueOf((byte)rec.getMappingQuality()));
+      list.add((byte)rec.getMappingQuality());
       list.add(rec.getCigarString());
       list.add(rec.getMateReferenceName());
       list.add(rec.getMateAlignmentStart());
